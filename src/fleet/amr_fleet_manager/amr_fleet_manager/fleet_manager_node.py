@@ -68,6 +68,7 @@ class FleetManager(Node):
             cost_fn=self.declare_parameter('assignment.cost_fn', 'euclidean').value,
             congestion_weight=self.declare_parameter('assignment.congestion_weight', 3.0).value,
             congestion_timeout_s=self.declare_parameter('assignment.congestion_timeout_s', 3.0).value,
+            aging_rate=self.declare_parameter('assignment.aging_rate', 0.0).value,
         ))
         heartbeat_period_s = self.declare_parameter('heartbeat_period_s', 0.2).value
         task_table_period_s = self.declare_parameter('task_table_period_s', 1.0).value
@@ -222,7 +223,9 @@ class FleetManager(Node):
 
 
     def _assign(self):
-        commands, rows = self._dispatcher.assign(time.monotonic())
+        # aging의 대기 시간은 노드 시계(시뮬레이션에서는 시뮬레이션 시간)로 잰다 - Task.created_time과 같은 시계
+        commands, rows = self._dispatcher.assign(
+            time.monotonic(), aging_now=stamp_to_sec(self.get_clock().now().to_msg()))
         if rows and self._log is not None:
             self._log.write(stamp_to_sec(self.get_clock().now().to_msg()), rows)
         self._send(commands)

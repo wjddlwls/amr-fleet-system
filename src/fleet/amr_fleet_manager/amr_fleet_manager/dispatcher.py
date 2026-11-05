@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
-from amr_fleet_core.assignment import (ALGORITHMS, COST_FNS, CongestedArea, CostFn, RobotInfo, TaskInfo,
+from amr_fleet_core.assignment import (ALGORITHMS, COST_FNS, Aging, CongestedArea, CostFn, RobotInfo, TaskInfo,
                                        euclidean_cost, filter_candidates, make_congestion_cost, sort_by_priority)
 
 from amr_fleet_core.claims import TaskClaims
@@ -52,6 +52,9 @@ class DispatcherConfig:
     congestion_weight: float = 3.0
     # 혼잡도를 이 시간 [s] 동안 못 받으면 직선 거리로 돌아간다. 혼잡도 노드가 죽었을 때 마지막 값으로 계속 벌점을 주지 않게
     congestion_timeout_s: float = 3.0
+    # 우선순위 aging (인터럽트 관제): 큐에서 기다린 1초마다 우선순위에 이만큼 더해 줄 세운다(amr_fleet_core Aging).
+    # 0이면 끈다 (기본, 지금 순서와 같음). 대기 시간은 assign()의 aging_now(Task.created_time과 같은 시계)로 잰다
+    aging_rate: float = 0.0
 
     def __post_init__(self):
         if self.algorithm not in ALGORITHMS:
@@ -60,6 +63,8 @@ class DispatcherConfig:
             raise ValueError(f'알 수 없는 비용 함수: {self.cost_fn} (가능: {list(COST_FNS)})')
         if not self.congestion_weight >= 0:
             raise ValueError(f'congestion_weight는 0 이상이어야 한다: {self.congestion_weight}')
+        if not self.aging_rate >= 0:
+            raise ValueError(f'aging_rate는 0 이상이어야 한다: {self.aging_rate}')
         if not self.congestion_timeout_s > 0:
             raise ValueError(f'congestion_timeout_s는 0보다 커야 한다: {self.congestion_timeout_s}')
         if self.resend_interval_s <= 0:
@@ -257,11 +262,15 @@ class Dispatcher:
 
     # ---- 출력 ----
 
-    def assign(self, now: float) -> tuple[list[Outgoing], list[AssignmentRow]]:
+    def assign(self, now: float, aging_now: Optional[float] = None) -> tuple[list[Outgoing], list[AssignmentRow]]:
         """큐의 작업을 놀고 있는 로봇에 맡긴다. 작업이나 후보가 없으면 알고리즘을 부르지 않는다.
 
         이미 다른 로봇이 맡았다고 보고한 작업은 맡기지 않고 그 로봇(주인)에게 넘긴다.
+        aging_now: aging(DispatcherConfig.aging_rate)의 지금 시각. now(실제 시간, 재전송·생존 판정)와 달리
+        TaskInfo.created(Task.created_time)와 같은 시계여야 한다 - 시뮬레이션에서는 시뮬레이션 시간. None이면 aging 끔.
         """
+        aging = (Aging(self.config.aging_rate, aging_now)
+                 if self.config.aging_rate > 0 and aging_now is not None else None)
         for t in self.tasks.values():
             if t.state == STATE_PENDING and not t.assignee:
                 owner = self.claims.owner(t.info.task_id, now)
@@ -269,7 +278,7 @@ class Dispatcher:
                     self._hand_over(t, owner, STATE_COMPLETED if self.claims.completed(t.info.task_id, owner)
                                     else STATE_IN_PROGRESS)
         queued = self._station_free(
-            [t.info for t in self.tasks.values() if t.state == STATE_PENDING and not t.assignee])
+            [t.info for t in self.tasks.values() if t.state == STATE_PENDING and not t.assignee], aging)
         free = [
             replace(r.info, load=r.load) for r in self.robots.values()
             if not r.task_id and not r.decentral and now - r.last_seen <= self.config.robot_timeout_s
@@ -279,7 +288,7 @@ class Dispatcher:
             return [], []
 
         cost_name, cost_fn = self._current_cost_fn(now)
-        result = self._assign_fn(queued, candidates, cost_fn)
+        result = self._assign_fn(queued, candidates, cost_fn, aging=aging)
         call_id = self._next_call_id
         self._next_call_id += 1
         by_id = {r.robot_id: r for r in candidates}
@@ -380,7 +389,7 @@ class Dispatcher:
 
     # ---- 내부 ----
 
-    def _station_free(self, queued: list[TaskInfo]) -> list[TaskInfo]:
+    def _station_free(self, queued: list[TaskInfo], aging: Optional[Aging] = None) -> list[TaskInfo]:
         """스테이션 예약(DispatcherConfig.station_clearance_m)에 걸리지 않는 작업만 남긴다 (순서는 그대로).
 
         맡겨진 작업의 스테이션은 끝날 때까지 잡혀 있다. 큐 안에서 같은 스테이션을 쓰는 작업끼리는 우선순위가 높은
@@ -392,7 +401,7 @@ class Dispatcher:
         taken = [xy for t in self.tasks.values() if t.assignee and t.state not in FINISHED
                  for xy in _stations(t.info)]
         allowed = set()
-        for info in sort_by_priority(queued):
+        for info in sort_by_priority(queued, aging):
             mine = _stations(info)
             if any(math.dist(a, b) <= clearance for a in mine for b in taken):
                 continue
