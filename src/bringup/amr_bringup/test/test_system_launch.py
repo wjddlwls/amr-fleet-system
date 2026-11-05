@@ -73,6 +73,18 @@ def test_options_off():
     assert sum(isinstance(a, Node) for a in actions) == 1
 
 
+def test_restaurant_world_and_robots_file():
+    module = load_module()
+    names = {a.name for a in module.generate_launch_description().get_launch_arguments()}
+    assert {'world', 'congestion_filter'} <= names
+    robots_file = os.path.join(get_package_share_directory('amr_bringup'), 'config', 'robots_restaurant.yaml')
+    actions = module._system(context_with_defaults(
+        module, num_robots=2, fleet='false', world='restaurant.sdf', body='serving', nav2='true',
+        congestion_filter='keepout', robots_file=robots_file, map_origin_in_world='[0, 0, 0]'))
+    assert sum(isinstance(a, TimerAction) for a in actions) == 2
+    assert os.path.exists(os.path.join(get_package_share_directory('amr_gazebo'), 'worlds', 'restaurant.sdf'))
+
+
 def test_world_to_map_tf_only_with_localization():
     module = load_module()
     actions = module._system(context_with_defaults(module, num_robots=1, fleet='false', localization='false'))
