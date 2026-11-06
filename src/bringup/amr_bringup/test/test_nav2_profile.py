@@ -1,6 +1,7 @@
 """식당 프로필(footprint)·혼잡도 costmap 필터 오버레이 (amr_bringup.nav2_profile). ROS 없이 돈다."""
 
 import ast
+import math
 import os
 
 import pytest
@@ -34,6 +35,23 @@ def test_restaurant_profile_matches_serving_robot_footprint(nav2_params):
     assert ys == pytest.approx({0.537 / 2})
     assert overrides['DWA']['footprint_half_length'] == pytest.approx(0.565 / 2)
     assert overrides['DWA']['footprint_half_width'] == pytest.approx(0.537 / 2)
+
+
+def test_restaurant_profile_widens_inflation_and_lets_the_robot_turn(nav2_params):
+    overrides = profile_overrides(nav2_params, 'restaurant')
+    base = {name: nav2_params[name][name]['ros__parameters']['inflation_layer']
+            for name in ('global_costmap', 'local_costmap')}
+    for name in ('global_costmap', 'local_costmap'):
+        layer = overrides[name]['inflation_layer']
+        # 물류센터보다 넓고 완만하게
+        assert layer['inflation_radius'] > base[name]['inflation_radius']
+        assert layer['cost_scaling_factor'] < base[name]['cost_scaling_factor']
+        # 가장 좁은 식당 통로(1.0 m) 가운데가 치명(253)이 되지 않는다
+        d = 0.5 - 0.537 / 2
+        assert 252 * math.exp(-layer['cost_scaling_factor'] * d) < 253
+    assert overrides['DWA']['rotate_in_place_clearance'] == 0.0
+    # 물류센터 값은 그대로 (식당 프로필만 덮어쓴다)
+    assert nav2_params['controller_server']['ros__parameters']['DWA']['rotate_in_place_clearance'] == 0.05
 
 
 def test_unknown_profile_is_rejected(nav2_params):

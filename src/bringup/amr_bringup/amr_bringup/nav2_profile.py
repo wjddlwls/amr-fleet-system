@@ -20,6 +20,15 @@ _RESTAURANT_FOOTPRINT = (
 )
 
 
+# 식당 팽창: 의자 등받이·테이블 옆으로 경로가 붙지 않게 넓고 완만하게 (물류센터 global 0.55 / local 0.5, scaling 3.0).
+# 서빙 로봇은 모서리 반경(외접원) 0.39 m라 정적 여유 0.32 m 자리에서 제자리 회전을 못 해 멈췄다(식당 리허설).
+# 가장 좁은 통로(6인석 사이 1.0 m) 가운데 비용은 약 159로 치명(253) 아래라 지나간다.
+RESTAURANT_INFLATION = {'global_costmap': (0.75, 2.0), 'local_costmap': (0.7, 2.0)}   # (inflation_radius, cost_scaling)
+# 제자리 회전 샘플의 여유. 물류센터 0.05면 회전에 반경 hypot(0.3325, 0.3185) = 0.46 m가 필요한데, 테이블 정차 자세는
+# 로봇 중심에서 테이블까지 0.43 m라 정차 자리·테이블 옆에서 회전 궤적이 하나도 안 남았다(DWA 궤적 없음 146회)
+RESTAURANT_ROTATE_CLEARANCE = 0.0
+
+
 def profile_overrides(nav2_params: dict, profile: str) -> dict:
     """{'global_costmap': {...}, 'local_costmap': {...}, 'DWA': {...}}에 덮어쓸 키만. warehouse면 빈 dict.
 
@@ -32,12 +41,16 @@ def profile_overrides(nav2_params: dict, profile: str) -> dict:
     if profile == 'warehouse':
         return {}
     del nav2_params
+    costmaps = {
+        name: {'footprint': _RESTAURANT_FOOTPRINT,
+               'inflation_layer': {'inflation_radius': radius, 'cost_scaling_factor': scaling}}
+        for name, (radius, scaling) in RESTAURANT_INFLATION.items()}
     return {
-        'global_costmap': {'footprint': _RESTAURANT_FOOTPRINT},
-        'local_costmap': {'footprint': _RESTAURANT_FOOTPRINT},
+        **costmaps,
         'DWA': {
             'footprint_half_length': _RESTAURANT_HALF_LENGTH,
             'footprint_half_width': _RESTAURANT_HALF_WIDTH,
+            'rotate_in_place_clearance': RESTAURANT_ROTATE_CLEARANCE,
         },
     }
 
