@@ -10,7 +10,7 @@
         robots_file:=$(ros2 pkg prefix amr_bringup)/share/amr_bringup/config/robots_restaurant.yaml \
         map:=$(ros2 pkg prefix amr_mapping)/share/amr_mapping/maps/restaurant_gt.yaml map_origin_in_world:='[0, 0, 0]' \
         dynamic_obstacles:=true dynamic_obstacles_file:=dynamic_obstacles_restaurant_peak.yaml \
-        cost_fn:=congestion                                                 # 식당 5대 (혼잡도 켬)
+        cost_fn:=congestion congestion_filter:=keepout                      # 식당 5대 (혼잡도 켬)
 
 기본은 1단계라 BT의 이동이 가짜(stub)여서 로봇이 움직이지 않는다. nav2 등은 꺼 둔 채로 시작해, 패키지가 준비되는 대로 인자로 켠다 (README "단계").
 nav2:=true면 BT의 이동(MoveTo)도 Nav2를 부르고(amr_bt use_nav2), docking:=true면 도킹(Dock)이 도킹 서버를 부른다(use_docking).
@@ -76,7 +76,7 @@ def _system(context):
         zone_client=flag('zone_client'), tracking=flag('tracking'), safety=flag('safety'),
         detection=flag('detection'), docking=flag('docking'), enable_camera=flag('enable_camera'),
         payload_mass=arg('payload_mass'), seed=seed, map=arg('map'), use_imu=arg('use_imu'),
-        zones_file=arg('zones_file'), body=arg('body'))
+        zones_file=arg('zones_file'), body=arg('body'), congestion_filter=arg('congestion_filter'))
     opt.validate()
 
     actions = [_launch('amr_gazebo', 'world.launch.py', gui=arg('gui'), world=arg('world'))]
@@ -161,6 +161,8 @@ def generate_launch_description():
         ('bt', 'true', 'amr_bt (Fleet 작업 수신). nav2:=true면 이동도 Nav2, 아니면 자리채움'),
         # 2·3단계 (꺼 두면 1단계와 같다)
         ('nav2', 'false', 'Nav2 (경로 계획·주행). localization:=true 필요'),
+        ('congestion_filter', 'none',
+         'Nav2 전역 costmap 혼잡도 필터: none / keepout(돌아가기) / speed(천천히). 혼잡도 노드(congestion.launch.py)가 따로 필요하다'),
         ('zone_client', 'false', '구역 클라이언트 (좁은 통로 진입 허가·속도 제한)'),
         ('tracking', 'false', 'LiDAR 장애물 추적·TTC'),
         ('safety', 'false', '안전 노드 (최종 cmd_vel)'),

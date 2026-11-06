@@ -153,6 +153,16 @@ def test_restaurant_args_reach_world_obstacles_and_fleet():
     assert include_args(context, actions, 'cost_fn')['cost_fn'] == 'euclidean'
 
 
+def test_congestion_filter_arg():
+    # 로봇마다 Nav2로 넘기는 값은 test_stack.py가 본다. 여기서는 인자가 있고 잘못된 값을 막는지만 본다
+    module = load_module()
+    names = {a.name for a in module.generate_launch_description().get_launch_arguments()}
+    assert 'congestion_filter' in names
+    module._system(context_with_defaults(module, num_robots=1, nav2=True, congestion_filter='keepout'))
+    with pytest.raises(RuntimeError, match='congestion_filter'):
+        module._system(context_with_defaults(module, num_robots=1, nav2=True, congestion_filter='slow'))
+
+
 def test_nav2_launch_description_builds():
     path = os.path.join(get_package_share_directory('amr_bringup'), 'launch', 'nav2.launch.py')
     spec = importlib.util.spec_from_file_location('nav2_launch', path)
