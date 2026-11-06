@@ -208,3 +208,45 @@ bash experiments/restaurant_rehearsal/scripts/runq.sh <컨테이너> <큐 파일
   - 후보(안 해 봄): 식당만 recovery_alpha 켜기(예 0.001/0.1), 손님에 끼었을 때 바퀴를 멈추게(안전 노드·DWA 근접 정지), EKF가 IMU 각속도·가속도로 헛돎을 거르게.
 - **inflation 수정은 PR 대상에서 뺀다.** none은 3회 중 2회 허용 안 도착(before 1회)으로 나아졌지만, keepout 3회가 모두 돌아가는 길(x -7.275 통로)을 버리고 서쪽 통로로 갔다(계획 302/302, 443/443, 163/356이 서쪽 통로 통과, before는 keepout이면 늘 돌아갔다). 폭 1.46 m 돌아가는 통로 가운데(벽에서 0.73 m)의 비용이 inflation 0.55·3.0에서는 0인데 0.75·2.0에서는 약 100이 되어 keepout 마스크(최대 90)보다 비싸졌다. 시연 1-2의 핵심(붐비는 통로 돌아가기)을 깨므로 넣지 않는다. 의자 옆 정체(여유 0.30~0.42 m)도 그대로 남았다.
 - 이 조건으로 1-2를 녹화하면 none은 되지만 keepout(돌아가기)은 안 된다.
+
+## 11/6 밤: dev 리베이스와 PR 본문 메모 (Gazebo 안 띄움)
+
+upstream/dev f03d953(#302·#307·#321 머지 뒤) 위로 옮겼다. 컨테이너 clean build 경고 0. push만 했고 PR은 올리지 않았다.
+
+| 브랜치 | 커밋 | 빌드·테스트 | PR 대상 |
+| --- | --- | --- | --- |
+| `fix/sim-restaurant-guest-yield` | 1165672, 196382b (`fix/nav-restaurant-guest-yield` 8c4df1b + `fix/sim-restaurant-guest-patience` 4e2e178를 한 브랜치로) | 경고 0, 249개 통과(13 skip), test_obstacle_motion 35개 | 예 |
+| `fix/nav-restaurant-inflation` | c1c7c7e (3a2aee3 리베이스, force-with-lease) | 경고 0, 242개 통과(13 skip) | **아니오**: keepout 돌아가기를 깬다 (위 11/6 저녁) |
+| `test/restaurant-demo-metrics` | 1545cec | 가짜 데이터 22개 통과, flake8(120) 깨끗 | 예 |
+| `fix/nav-restaurant-scan-map` | e2cc88f | - | 아니오: 효과 검증 전이고 측정상 가설이 틀렸다 |
+| `feat/bringup-congestion-filter` | bf9a475 | - | #304가 nav2.launch에 넣은 필터를 system.launch에서 넘기는 인자만. 필요하면 dev 위로 다시 옮긴다 |
+
+#321(손님 충돌체를 무게중심 구, 반지름 0.25, 마찰 0)과 겹치는 파일은 없다(#321은 model.sdf·README만, 이쪽은 obstacle_motion.py·손님 yaml·테스트). 값도 맞다: 비키기 거리 계산의 `BODY_RADIUS['customer'] = 0.25`가 #321 구 반지름과 같다.
+
+### PR 본문 메모: fix/sim-restaurant-guest-yield
+
+변경
+- `obstacle_motion`: `BODY_RADIUS`에 customer 0.25(#321 구 반지름과 같음). 선택 키 `yield_robot_size`(기본은 AMR 0.6 x 0.4라 물류센터 작업자는 그대로)
+- 선택 키 `yield_patience_s`(기본 5), `yield_progress_m`(기본 없음 = 예전 동작). progress를 주면 비켜 선 손님이, 막고 있는 로봇이 patience 동안 progress_m도 못 움직였을 때 다시 걷는다. 무작위 손님은 막히지 않은 목표를 고른다
+- 식당 평상시·피크 손님 yaml: straight·random 손님에 `yield_to_robots: [amr_01..amr_05]`, `yield_robot_size: [0.565, 0.537]`, `yield_patience_s: 3.0`, `yield_progress_m: 0.1`. curve 손님(customer_3)과 손님 경로는 그대로
+- 테스트 test_obstacle_motion +11 (35개)
+
+리허설 근거 (1-2, 피크 손님, 로봇 1대, GT 기준)
+- 비키기 전(none_s3, keepout_s3): 정지 구간 내내 가장 가까운 손님이 로봇 중심에서 0.22~0.39 m(닿는 거리 0.52 m)에 서 있었다. 로봇은 회전 명령을 받는데 GT가 그대로였고, 이 헛돎이 위치추정을 0.9~1.8 m 밀었다
+- 비키기 뒤(y_ 7회): 손님이 로봇에 붙어 서는 정지는 사라졌다. none_s1은 GT 0.15 m로 도착했다
+- 남은 것 → patience: y_none_s3에서 배식대 앞 손님(peak_6)과 로봇이 서로 기다려 130 s 멈췄고, C_keepout_s3에서도 서 있는 손님 peak_1(0.36 m, 움직임 0 %)에 21 s 끼어 바퀴가 헛돌며 위치 오차가 2.27 m까지 커졌다. 손님이 비켜 선 채로 로봇이 못 움직이면 둘 다 영원히 기다리므로 3 s 뒤 손님이 다시 걷게 했다
+- patience는 단위 테스트만 했고 Gazebo 측정은 아직 없다 (클라우드에서 확인 필요)
+
+### PR 본문 메모: test/restaurant-demo-metrics
+
+변경
+- `experiments/restaurant_demo/`: 녹화 rosbag(`runs/demo_<장면>-<on|off>/`) → 1-2 요청 → `buffet_2` 도착 시간과 그 사이 멈춘 횟수, 2 1막 회수 대기·2막 기아 시간
+- 기아 시간 정의는 #306 `collect_aging.starvation`과 같고 입력만 `/fleet/task_table`로 바꿨다(#306은 아직 dev에 없어 가져다 쓰지 않고 옮겨 적었다)
+- 가짜 데이터 테스트 22개(가짜 rosbag을 써서 analyze.py 끝까지 1개 포함)
+
+근거
+- `RobotState.velocity`는 amr_bt가 채우지 않아(자세만, 2 Hz) 속도는 자세 차분으로 잰다
+- 노션 "클라우드 시나리오 녹화" 페이지는 이 환경에서 못 열었다(Notion 연결 인증 필요). 폴더 규칙은 요청에 적힌 `runs/demo_<장면>-<on|off>/`를 따랐고, 1막·2막 구간은 `--act2`로 주게 했다(안 주면 녹화 전체)
+
+### inflation을 빼는 이유 (PR 본문용 한 줄)
+- 식당 프로필 inflation 0.75·cost_scaling 2.0은 폭 1.46 m 돌아가는 통로 가운데 비용을 0 → 약 100으로 올려 keepout 마스크(최대 90)보다 비싸게 만든다. keepout 3회 모두 서쪽 통로로 들어가 정체됐다(before는 keepout이면 늘 돌아갔다). none은 3회 중 2회 도착(before 1회)으로 나아졌지만 시연 1-2의 핵심을 깨므로 넣지 않는다
