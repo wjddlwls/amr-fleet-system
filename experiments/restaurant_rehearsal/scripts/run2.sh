@@ -8,8 +8,13 @@ B=$(ros2 pkg prefix amr_bringup)/share/amr_bringup/config
 G=$(ros2 pkg prefix amr_gazebo)/share/amr_gazebo/config
 F=$(ros2 pkg prefix amr_fleet_manager)/share/amr_fleet_manager/config
 M=$(ros2 pkg prefix amr_mapping)/share/amr_mapping/maps/restaurant_gt.yaml
+# MAPS=split이면 위치추정은 restaurant_scan(스캔 높이), 경로 계획은 restaurant_gt (fix/nav-restaurant-scan-map)
+MAPARGS="map:=$M"
+if [ "${MAPS:-one}" = split ]; then
+  MAPARGS="map:=${M%restaurant_gt.yaml}restaurant_scan.yaml planning_map:=$M"
+fi
 setsid ros2 launch amr_bringup system.launch.py world:=restaurant.sdf body:=serving num_robots:=$n \
-  robots_file:=$B/robots_restaurant.yaml map:=$M map_origin_in_world:='[0, 0, 0]' \
+  robots_file:=$B/robots_restaurant.yaml $MAPARGS map_origin_in_world:='[0, 0, 0]' \
   nav2:=true fleet:=false seed:=$seed > $D/logs/$label.system.log 2>&1 &
 P1=$!
 setsid ros2 launch amr_fleet_manager fleet_manager.launch.py use_sim_time:=true \

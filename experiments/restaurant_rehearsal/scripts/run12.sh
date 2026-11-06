@@ -8,13 +8,18 @@ source /ros2_ws/install/setup.bash
 fastdds shm clean >/dev/null 2>&1
 G=$(ros2 pkg prefix amr_gazebo)/share/amr_gazebo/config
 M=$(ros2 pkg prefix amr_mapping)/share/amr_mapping/maps/restaurant_gt.yaml
+# MAPS=split이면 위치추정은 restaurant_scan(스캔 높이), 경로 계획은 restaurant_gt (fix/nav-restaurant-scan-map)
+MAPARGS="map:=$M"
+if [ "${MAPS:-one}" = split ]; then
+  MAPARGS="map:=${M%restaurant_gt.yaml}restaurant_scan.yaml planning_map:=$M"
+fi
 cat > $D/robots_start.yaml <<EOF
 robots:
   amr_01: [-8.8, -3.27, -1.57079633]
 EOF
 obst=$G/dynamic_obstacles_restaurant.yaml; [ "$guests" = peak ] && obst=$G/dynamic_obstacles_restaurant_peak.yaml
 setsid ros2 launch amr_bringup system.launch.py world:=restaurant.sdf body:=serving num_robots:=1 \
-  robots_file:=$D/robots_start.yaml map:=$M map_origin_in_world:='[0, 0, 0]' \
+  robots_file:=$D/robots_start.yaml $MAPARGS map_origin_in_world:='[0, 0, 0]' \
   nav2:=true fleet:=false bt:=false congestion_filter:=$filter seed:=$seed > $D/logs/$label.system.log 2>&1 &
 P1=$!
 sleep 15
