@@ -151,7 +151,7 @@ docker exec $C bash -c 'source /ros2_ws/install/setup.bash; python3 /tmp/abort_c
 | y_keepout_s2 | ABORTED | 5.9 m | 0.27 m | x -7.67 의자 옆 여유 0.32, DWA 궤적 없음 141회 |
 | y_none_s3 | CANCELED | 1.56 m | 0.38 m | 배식대 앞 손님(peak_6)과 서로 기다림 130 s |
 | y_keepout_s3 | CANCELED | (bag `bags/y_keepout_s3_done`, 분석 안 함) | | |
-| y_speed_s1 | ABORTED (0.36 m 주행) | 0.33 m(출발점) | 0.12 m | t11 옆 제자리 회전 불가, DWA 궤적 없음 146회 |
+| y_speed_s1 | ABORTED (0.36 m 주행) | 7.4 m (출발점 옆) | 0.12 m | t11 옆 제자리 회전 불가, DWA 궤적 없음 146회 |
 
 시나리오 2 (aging 1.667 확인):
 - y_collect_s1 (로봇 2대, 600 s):
