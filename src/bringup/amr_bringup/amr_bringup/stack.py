@@ -7,6 +7,7 @@ launch 라이브러리 객체를 뜯어보지 않고도 테스트할 수 있게 
 from dataclasses import dataclass
 from typing import List, NamedTuple
 
+from amr_bringup.nav2_profile import CONGESTION_FILTERS
 from amr_bringup.robots import cmd_vel_chain, encoder_seed
 
 # 몸체(spawn_robot body) → Nav2 프로필(nav2.launch.py nav2_profile). serving이면 footprint가 서빙 로봇 크기가 된다
@@ -39,10 +40,14 @@ class Options:
     use_imu: str = 'true'
     zones_file: str = ''
     body: str = 'amr'
+    congestion_filter: str = 'none'
 
     def validate(self) -> None:
         if self.body not in NAV2_PROFILE:
             raise RuntimeError(f'body는 {", ".join(NAV2_PROFILE)} 중 하나: {self.body!r}')
+        if self.congestion_filter not in CONGESTION_FILTERS:
+            raise RuntimeError(
+                f'congestion_filter는 {", ".join(CONGESTION_FILTERS)} 중 하나: {self.congestion_filter!r}')
         if self.nav2 and not self.localization:
             raise RuntimeError('nav2:=true는 map → odom TF를 내는 위치추정이 필요하다 (localization:=true)')
         if self.docking and not self.nav2:
@@ -84,7 +89,7 @@ def robot_stack(opt: Options, index: int, name: str, pose, map_pose) -> List[Inc
     if opt.nav2:
         stack.append(Include('amr_bringup', 'nav2.launch.py', dict(
             namespace=name, cmd_vel_topic=chain['nav_out'], nav2_profile=NAV2_PROFILE[opt.body],
-            use_sim_time='true')))
+            congestion_filter=opt.congestion_filter, use_sim_time='true')))
     if opt.zone_client:
         # 서버와 같은 구역 목록. zones.yaml은 world 좌표라 TF map ← world(system.launch가 발행)로
         # 바꿔 쓰게 한다 (구역 1.5 m 어긋남 수정). 로봇 위치는 네임스페이스 안 상대 토픽

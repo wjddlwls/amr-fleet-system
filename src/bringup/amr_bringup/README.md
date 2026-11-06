@@ -20,7 +20,8 @@ ros2 launch amr_bringup system.launch.py nav2:=true zone_client:=true tracking:=
 
 # 식당 5대 (혼잡도 켬/끔 측정, 식당 시연 작업 5). 혼잡도 노드는 따로 띄운다:
 #   ros2 launch amr_fleet_manager congestion.launch.py site:=restaurant guests:=peak
-# 끔은 cost_fn:=euclidean(기본). 작업 생성기에는 stations_file:=.../stations_restaurant.yaml map_origin_in_world:='[0, 0, 0]'
+# 끔은 cost_fn:=euclidean(기본). Nav2 경로도 혼잡 구역을 피하려면 congestion_filter:=keepout(돌아가기) 또는 speed(천천히)를 더한다.
+# 작업 생성기에는 stations_file:=.../stations_restaurant.yaml map_origin_in_world:='[0, 0, 0]'
 ros2 launch amr_bringup system.launch.py world:=restaurant.sdf body:=serving nav2:=true \
   robots_file:=$(ros2 pkg prefix amr_bringup)/share/amr_bringup/config/robots_restaurant.yaml \
   map:=$(ros2 pkg prefix amr_mapping)/share/amr_mapping/maps/restaurant_gt.yaml map_origin_in_world:='[0, 0, 0]' \
