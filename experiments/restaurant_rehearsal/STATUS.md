@@ -130,3 +130,58 @@ docker exec $C bash -c 'source /ros2_ws/install/setup.bash; python3 /tmp/abort_c
 | `scripts/` | pairs.py, run12.sh, measure12.py, run2.sh, scene2.py, abort_causes.py |
 
 남은 실행 (11/6 배터리로 중단): y_speed_s1, y_collect_s1(로봇 2대), y_collect1_s1(로봇 1대) — y_keepout_s3는 끝남(json·`bags/y_keepout_s3_done`·`logs_1106/`, 예전 부분 bag `bags/y_keepout_s3`는 지워야 함).
+
+## 11/6 오후 (외출 중 자율 진행) - 배터리 6 %로 중단
+
+배터리가 10 % 아래(6 %)로 떨어져 새 실행을 시작하지 않고 멈췄다. 결과는 `raw/run_1106b/`(scene1_2·scene2: json·logs·bags)에 있다.
+
+### 판단한 것
+- 새 dev(#285·#287·#309)는 fleet_metrics·task_generator launch·테스트만 바꿔 리허설 조건과 무관하다. after 배치는 같은 빌드로 마쳤다. 단계 B부터는 수정 브랜치가 새 dev 기준이라 rehearsal 브랜치에 그 dev가 같이 들어왔다.
+- 시나리오 2 시간 제한: 로봇 2대 600 s, 1대 900 s(시뮬레이션).
+- 4단계 rotate_in_place_clearance는 늘리지 않고 0.0으로 낮췄다. 테이블 정차 자세에서 로봇 중심~테이블이 0.43 m인데, 0.05 여유면 회전에 0.46 m가 필요하다. y_speed_s1이 t11 바로 옆에서 DWA 궤적 없음 146회로 164 s 멈췄다(위치 오차 0.12 m, 손님 0.92 m 밖).
+- 6단계: 교통 구역 파일은 물류센터 zones.yaml뿐이고 식당 구역 설정이 없다. zone_client를 켜면 물류센터 좌표 구역이 식당에 걸리므로 켜지 않았다. 식당 구역(6인석 1.0 m 십자 통로, 부스 앞 1.09 m, 홀 가로 통로)을 정하는 것은 팀 결정이라 제안만 한다.
+- 3단계: 안전 노드는 system.launch 기본값(1단계)이라 꺼져 있다. 켜려면 tracking도 켜야 한다. 또 safety.yaml 로봇 크기가 AMR 0.6 x 0.4 고정이라 서빙 로봇(0.565 x 0.537)에 맞는 크기 인자가 먼저 필요하다. side_margin도 DWA rotate_in_place_clearance와 같아야 한다(식당 0.0). 아직 못 했다.
+
+### after 배치 마무리 (yield 수정)
+| 실행 | 보고 | GT 도착 오차 | 위치 추정 오차 | 주 정체 원인 |
+| --- | --- | --- | --- | --- |
+| y_none_s1 | SUCCEEDED | 0.15 m | 0.14 m | 서쪽 통로 의자 옆(여유 0.32) 36 s |
+| y_keepout_s1 | SUCCEEDED (가짜) | 1.9 m | 1.77 m | 정체 없음, 위치 추정 어긋남 |
+| y_none_s2 | SUCCEEDED (허용 0.25 밖) | 0.64 m | 0.46 m | - |
+| y_keepout_s2 | ABORTED | 5.9 m | 0.27 m | x -7.67 의자 옆 여유 0.32, DWA 궤적 없음 141회 |
+| y_none_s3 | CANCELED | 1.56 m | 0.38 m | 배식대 앞 손님(peak_6)과 서로 기다림 130 s |
+| y_keepout_s3 | CANCELED | (bag `bags/y_keepout_s3_done`, 분석 안 함) | | |
+| y_speed_s1 | ABORTED (0.36 m 주행) | 0.33 m(출발점) | 0.12 m | t11 옆 제자리 회전 불가, DWA 궤적 없음 146회 |
+
+시나리오 2 (aging 1.667 확인):
+- y_collect_s1 (로봇 2대, 600 s):
+  - 할당 순서는 n1, n2, **c1, c2**, n3, n4다. 회수 호출이 먼저 할당됐고 테이블 → return_1/2로 완료했다(amr_02).
+  - amr_01은 n2를 끝내 못 하고 531 s에 FAILED(201)다. 로봇끼리 막힘이 남았다.
+- y_collect1_s1 (로봇 1대, 900 s):
+  - n1 완료(75 s) → **c1 할당·완료(139 s)** → c2 할당이다. 회수 호출 두 건이 일반 작업 n2~n4보다 먼저 나갔다.
+  - c2는 672 s에 FAILED(201)다(분석 안 함).
+
+### 2단계 위치 추정 (가장 중요)
+- 가설: restaurant_gt 상판 상자 때문에 AMCL이 테이블 둘레에서 위치를 못 잡는다.
+- 위치추정용 지도를 나눴다: `fix/nav-restaurant-scan-map`(e2cc88f). restaurant_map.py `--scan-height`로 `restaurant_scan` 지도를 만들고, system.launch `planning_map`을 주면 costmap static_layer만 `/map_planning`을 읽는다.
+  - 경로 계획 쪽은 keepout 마스크가 아니라 별도 지도 토픽(static_layer map_topic)으로 했다.
+  - 이유: keepout 필터 자리는 혼잡도 마스크가 이미 쓴다. 상판은 늘 막혀 있는 정적 물체라 static layer가 맞다. 마스크 값으로 칠하면 치명(254)이 아니라 비용으로 바뀔 수 있다.
+- 데이터 확인은 아직 1회뿐이다. y_speed_s1은 t11 근처만 있었고, 두 지도 일치도가 비슷했다(점수 0.691 vs 0.649, 평탄도 0.006 vs 0.006, AMCL 오차 0.12 m). **가설은 아직 확인되지 않았다.**
+  - 다음: 주행이 긴 bag(`raw/run_1106b/scene2/bags/*`, amcl_pose·scan 있음)에 `scripts/scan_match.py`를 돌린다.
+  - 그다음 단계 B(MAPS=split, 아래 명령)로 전후를 비교한다.
+
+### 만든 브랜치 (push함, PR 없음)
+- `fix/nav-restaurant-scan-map` e2cc88f: 위치추정·경로 계획 지도 나누기 (2단계). rehearsal에 merge함
+- `fix/nav-restaurant-inflation` 3a2aee3: 식당 프로필 inflation 0.75/0.7, cost_scaling 2.0, rotate_in_place_clearance 0.0 (4단계). 아직 merge·측정 안 함
+- `fix/sim-restaurant-guest-patience` 4e2e178: 식당 손님이 로봇이 3 s 동안 0.1 m도 못 움직이면 다시 걷는다 (5단계, yield 브랜치 위). 아직 merge·측정 안 함
+- 주의: `feat/bringup-congestion-filter`와 `fix/nav-restaurant-scan-map`은 stack.py·system.launch.py 같은 줄을 고쳐, 둘째로 dev에 들어가는 쪽이 충돌한다.
+
+### 남은 것
+- 단계 B (지도 나누기) 6회: 큐 파일 `qB.txt` 내용 = `MAPS=split bash /tmp/r12/run12.sh B_<none|keepout>_s<1..3> <none|keepout> peak <1..3>`
+- 단계 C: `fix/nav-restaurant-inflation` merge → 6회. 단계 D: `fix/sim-restaurant-guest-patience` merge → 6회. 그 뒤 시나리오 2 다시.
+- 3단계(안전 노드 서빙 크기), 6단계(식당 교통 구역), 7단계(GT 위치 옵션, 2단계가 안 풀리면)는 하지 못했다.
+
+```bash
+# 다시 시작: 컨테이너 띄우고 빌드·스크립트 복사는 위 "다시 시작하기"와 같다
+bash experiments/restaurant_rehearsal/scripts/runq.sh <컨테이너> <큐 파일>   # 실행마다 배터리 확인, 10 % 아래면 멈춤
+```
