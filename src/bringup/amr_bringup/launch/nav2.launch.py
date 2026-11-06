@@ -56,7 +56,7 @@ def _nav2(context):
     # 안 맞추면 SpeedFilter publisher count 0, DWA가 평생 제한을 못 받는다)
     overrides = {ns: build_overrides(
         nav2_params, arg('nav2_profile'), arg('congestion_filter'), odom_topic,
-        speed_limit_topic=f'/{ns}/speed_limit')}
+        speed_limit_topic=f'/{ns}/speed_limit', static_map_topic=arg('static_map_topic'))}
     # 로봇마다 다른 임시 파일이 필요하다 (프로세스가 끝나면 OS가 지운다)
     overrides_file = tempfile.NamedTemporaryFile(
         mode='w', prefix=f'nav2_{ns}_', suffix='.yaml', delete=False)
@@ -120,5 +120,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'congestion_filter', default_value='none', choices=list(CONGESTION_FILTERS),
             description='전역 costmap에 붙일 혼잡도 필터(#296). keepout(돌아가기)·speed(느려짐)'),
+        DeclareLaunchArgument(
+            'static_map_topic', default_value='',
+            description='costmap static_layer가 읽을 지도 토픽. 비우면 /map (위치추정과 같은 지도)'),
         OpaqueFunction(function=_nav2),
     ])

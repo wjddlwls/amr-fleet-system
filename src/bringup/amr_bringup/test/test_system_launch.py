@@ -171,3 +171,14 @@ def test_nav2_launch_description_builds():
     names = {a.name for a in module.generate_launch_description().get_launch_arguments()}
     assert {'namespace', 'use_sim_time', 'params_file', 'odom_topic', 'cmd_vel_topic',
             'nav2_profile', 'congestion_filter'} <= names
+
+
+def test_planning_map_adds_a_second_map_server():
+    module = load_module()
+    plain = module._system(context_with_defaults(module, num_robots=1, fleet='false'))
+    split = module._system(context_with_defaults(module, num_robots=1, fleet='false',
+                                                 planning_map='/tmp/plan.yaml'))
+    # world → map TF + map_server_planning + 그 lifecycle manager
+    assert sum(isinstance(a, Node) for a in split) == sum(isinstance(a, Node) for a in plain) + 2
+    executables = sorted(a.node_executable for a in split if isinstance(a, Node))
+    assert executables.count('map_server') == 1 and executables.count('lifecycle_manager') == 1

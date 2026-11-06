@@ -110,3 +110,17 @@ def test_build_overrides_speed_filter_threads_speed_limit_topic_through(nav2_par
         nav2_params, 'warehouse', 'speed', 'odometry/local', speed_limit_topic='/amr_01/speed_limit')
     gc = overrides['global_costmap']['global_costmap']['ros__parameters']
     assert gc['speed_filter']['speed_limit_topic'] == '/amr_01/speed_limit'
+
+
+def test_static_map_topic_points_both_costmaps_at_the_planning_map(nav2_params):
+    overrides = build_overrides(nav2_params, 'restaurant', 'keepout', 'odometry/local',
+                                static_map_topic='/map_planning')
+    for costmap in ('global_costmap', 'local_costmap'):
+        params = overrides[costmap][costmap]['ros__parameters']
+        assert params['static_layer'] == {'map_topic': '/map_planning'}
+    # 필터 오버레이는 그대로
+    assert 'keepout_filter' in overrides['global_costmap']['global_costmap']['ros__parameters']['plugins']
+    # 기본(빈 값)이면 static_layer를 건드리지 않는다
+    plain = build_overrides(nav2_params, 'restaurant', 'none', 'odometry/local')
+    assert 'static_layer' not in plain['global_costmap']['global_costmap']['ros__parameters']
+    assert 'static_layer' not in plain['local_costmap']['local_costmap']['ros__parameters']

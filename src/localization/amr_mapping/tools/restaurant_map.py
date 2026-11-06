@@ -15,6 +15,13 @@ AMCL은 스캔 점(다리)이 점유 칸 안에 떨어지므로 그대로 맞는
 - --stations를 주면 로봇 크기로 지나갈 수 있는지 잰다: 점유 칸을 로봇 반폭(내접원)만큼 부풀린 뒤
   wait_1에서 모든 정차 자세까지 이어지는지 (Nav2가 통과 불가로 보는 기준과 같다)
 
+--scan-height Z를 주면 위치추정(AMCL)용 지도를 만든다: 높이 Z(LiDAR 스캔 평면, 서빙 로봇 0.38 m)를 지나는 충돌체만
+칠한다 (테이블은 다리만, 상판은 안 칠함). 경로 계획용(기본 출력)과 나눠 쓴다. 상판까지 칠한 지도로 AMCL을 돌리면
+다리에 맞은 점이 상판 상자 안 어디에 떨어져도 거리 0이라, 테이블 둘레에서 위치를 잡아 주지 못한다.
+
+    python3 restaurant_map.py ../../simulation/amr_gazebo/worlds/restaurant.sdf maps/restaurant_scan.yaml \\
+        --scan-height 0.38 --png maps/restaurant_scan.png
+
 PyYAML·numpy가 필요하다 (PNG는 PIL). ROS 없이 돈다.
 """
 import argparse
@@ -100,12 +107,16 @@ def cell_centers():
     return np.meshgrid(xs, ys)
 
 
-def rasterize(shapes, robot_height=ROBOT_HEIGHT):
+def rasterize(shapes, robot_height=ROBOT_HEIGHT, scan_height=None):
+    """충돌체 → 점유 격자. scan_height가 있으면 그 높이를 지나는 충돌체만, 없으면 [FLOOR_EPS, robot_height)와 겹치는 것."""
     wx, wy = cell_centers()
     img = np.where((np.abs(wx) < INSIDE[0]) & (np.abs(wy) < INSIDE[1]), FREE, UNKNOWN).astype(np.uint8)
     used = 0
     for cx, cy, yaw, hx, hy, zmin, zmax, kind in shapes:
-        if zmax <= FLOOR_EPS or zmin >= robot_height:
+        if scan_height is not None:
+            if not zmin <= scan_height < zmax:
+                continue
+        elif zmax <= FLOOR_EPS or zmin >= robot_height:
             continue
         used += 1
         dx, dy = wx - cx, wy - cy
@@ -155,16 +166,21 @@ def main(argv=None):
     ap.add_argument('sdf')
     ap.add_argument('out_yaml')
     ap.add_argument('--robot-height', type=float, default=ROBOT_HEIGHT)
+    ap.add_argument('--scan-height', type=float,
+                    help='위치추정용: 이 높이(m, LiDAR 스캔 평면)를 지나는 충돌체만 칠한다. 없으면 경로 계획용(로봇 키까지 전부)')
     ap.add_argument('--stations', help='stations_restaurant.yaml: 로봇 크기로 모든 정차 자세에 갈 수 있는지 잰다')
     ap.add_argument('--png', help='README 표시용 PNG')
     a = ap.parse_args(argv)
 
-    img, used = rasterize(load_shapes(a.sdf), a.robot_height)
+    img, used = rasterize(load_shapes(a.sdf), a.robot_height, a.scan_height)
     base = os.path.splitext(a.out_yaml)[0]
     with open(base + '.pgm', 'wb') as f:
         f.write(f'P5\n{SIZE[0]} {SIZE[1]}\n255\n'.encode() + img.tobytes())
     with open(a.out_yaml, 'w', encoding='utf-8') as f:
-        f.write('# 식당 정답 지도: 월드 SDF에서 서빙 로봇 키(1.29 m)보다 낮은 물체를 전부 칠했다 - 테이블 상판 포함\n'
+        what = (f'높이 {a.scan_height} m(LiDAR 스캔 평면)를 지나는 물체만 칠했다 - 테이블은 다리만 (위치추정용)'
+                if a.scan_height is not None else
+                '서빙 로봇 키(1.29 m)보다 낮은 물체를 전부 칠했다 - 테이블 상판 포함')
+        f.write(f'# 식당 정답 지도: 월드 SDF에서 {what}\n'
                 '# (amr_mapping tools/restaurant_map.py, SLAM 아님). map = world, map_origin_in_world [0, 0, 0]\n'
                 f'image: {os.path.basename(base)}.pgm\nmode: trinary\nresolution: {RESOLUTION}\n'
                 f'origin: [{ORIGIN[0]}, {ORIGIN[1]}, 0]\nnegate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.25\n')

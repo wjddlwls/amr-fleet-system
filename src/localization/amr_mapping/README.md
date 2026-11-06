@@ -73,7 +73,19 @@ python3 tools/restaurant_map.py ../../simulation/amr_gazebo/worlds/restaurant.sd
 - 좌표: map = world (`map_origin_in_world` [0, 0, 0]). 0.05 m 칸, 원점 [−12.5, −8.5], 500×340칸
 - 칠하는 것: 충돌체 높이 구간이 [3 cm, 1.29 m)와 겹치는 것 전부 (테이블·의자·부스·기둥·화분·앉은·서 있는 손님·조리대·칸막이·충전기 본체·외벽). 뺀 것: 바닥 표시, 충전 패드(2 mm)
 - `--stations`: 점유 칸을 로봇 반폭(0.269 m, Nav2 통과 불가 거리)만큼 부풀린 뒤 `wait_1`에서 모든 정차 자세까지 이어지는지 잰다. 지금 40/40곳 (외접원 0.39 m로 부풀려도 40/40). 못 가는 곳이 있으면 종료 코드 1
-- 식당에서 띄우기: `system.launch.py body:=serving map:=<이 지도 yaml> map_origin_in_world:=[0, 0, 0]` (footprint 0.565 x 0.537 m는 body가 맞춘다). 식당 월드·로봇 스폰 목록을 고르는 인자는 아직 없다
+- 식당에서 띄우기: `system.launch.py world:=restaurant.sdf body:=serving map:=<이 지도 yaml> map_origin_in_world:=[0, 0, 0]` (footprint 0.565 x 0.537 m는 body가 맞춘다)
+- **위치추정용 지도는 따로 쓴다 (`maps/restaurant_scan.*`, `--scan-height 0.38`).**
+  - 상판까지 칠한 이 지도로 AMCL(likelihood_field)을 돌리면, 다리에 맞은 스캔 점이 상판 상자 안 어디에 떨어져도 거리 0이다. 그래서 테이블 둘레에서 위치를 잡아 주지 못한다.
+  - `restaurant_scan`은 높이 0.38 m(LiDAR 스캔 평면)를 지나는 충돌체만 칠한다(테이블은 다리만).
+  - `system.launch.py`의 `map:=`에는 `restaurant_scan.yaml`(AMCL, `/map`)을, `planning_map:=`에는 `restaurant_gt.yaml`(costmap static_layer, `/map_planning`)을 준다.
+
+```bash
+python3 tools/restaurant_map.py ../../simulation/amr_gazebo/worlds/restaurant.sdf maps/restaurant_scan.yaml \
+    --scan-height 0.38 --stations ../../fleet/amr_fleet_manager/config/stations_restaurant.yaml --png maps/restaurant_scan.png
+M=$(ros2 pkg prefix amr_mapping)/share/amr_mapping/maps
+ros2 launch amr_bringup system.launch.py world:=restaurant.sdf body:=serving nav2:=true \
+  map:=$M/restaurant_scan.yaml planning_map:=$M/restaurant_gt.yaml map_origin_in_world:='[0, 0, 0]'
+```
 
 ![restaurant_gt](maps/restaurant_gt.png)
 

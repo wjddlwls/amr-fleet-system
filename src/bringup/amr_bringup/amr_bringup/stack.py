@@ -41,6 +41,8 @@ class Options:
     zones_file: str = ''
     body: str = 'amr'
     congestion_filter: str = 'none'
+    # 경로 계획용 지도 토픽 (system.launch planning_map). 비우면 위치추정과 같은 /map
+    static_map_topic: str = ''
 
     def validate(self) -> None:
         if self.body not in NAV2_PROFILE:
@@ -89,7 +91,8 @@ def robot_stack(opt: Options, index: int, name: str, pose, map_pose) -> List[Inc
     if opt.nav2:
         stack.append(Include('amr_bringup', 'nav2.launch.py', dict(
             namespace=name, cmd_vel_topic=chain['nav_out'], nav2_profile=NAV2_PROFILE[opt.body],
-            congestion_filter=opt.congestion_filter, use_sim_time='true')))
+            congestion_filter=opt.congestion_filter, static_map_topic=opt.static_map_topic,
+            use_sim_time='true')))
     if opt.zone_client:
         # 서버와 같은 구역 목록. zones.yaml은 world 좌표라 TF map ← world(system.launch가 발행)로
         # 바꿔 쓰게 한다 (구역 1.5 m 어긋남 수정). 로봇 위치는 네임스페이스 안 상대 토픽
