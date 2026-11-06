@@ -25,7 +25,7 @@ setsid ros2 launch amr_fleet_manager congestion.launch.py site:=restaurant guest
   > $D/logs/$label.cong.log 2>&1 &
 P3=$!
 mkdir -p $D/bags; rm -rf $D/bags/$label
-setsid ros2 bag record -o $D/bags/$label -e   '/amr_0[12]/(cmd_vel|plan|ground_truth/odom|local_costmap/costmap)|/dynamic_obstacles/.*/ground_truth/odom|/fleet/(congestion|task_assignments|task_status|robot_states)'   > $D/logs/$label.bag.log 2>&1 &
+setsid ros2 bag record -o $D/bags/$label -e   '/amr_0[12]/(cmd_vel|plan|ground_truth/odom|local_costmap/costmap|amcl_pose|scan)|/dynamic_obstacles/.*/ground_truth/odom|/fleet/(congestion|task_assignments|task_status|robot_states)'   > $D/logs/$label.bag.log 2>&1 &
 PB=$!
 need=""; [ "$filter" != none ] && need=--need-mask
 timeout 1500 python3 $D/measure12.py --goal -9.9 4.15 1.5707963 --out $D/$label.json $need --timeout 180 \

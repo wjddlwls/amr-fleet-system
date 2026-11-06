@@ -128,3 +128,5 @@ docker exec $C bash -c 'source /ros2_ws/install/setup.bash; python3 /tmp/abort_c
 | `raw/scene1_2/abort_causes.json` | before s3 3회 분석 결과 |
 | `raw/scene2/` | before collect_s1 bag·assignments.csv·로그 |
 | `scripts/` | pairs.py, run12.sh, measure12.py, run2.sh, scene2.py, abort_causes.py |
+
+남은 실행 (11/6 배터리로 중단): y_speed_s1, y_collect_s1(로봇 2대), y_collect1_s1(로봇 1대) — y_keepout_s3는 끝남(json·`bags/y_keepout_s3_done`·`logs_1106/`, 예전 부분 bag `bags/y_keepout_s3`는 지워야 함).

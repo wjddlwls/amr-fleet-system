@@ -1,5 +1,5 @@
 #!/bin/bash
-# 시연 2 한 번: run2.sh <label> <seed> [로봇 수, 기본 2]. 로봇은 wait_1부터, 평상시 손님, Fleet 서버 + 식당 설정(aging 1.667)
+# 시연 2 한 번: run2.sh <label> <seed> [로봇 수, 기본 2] [시간 제한 시뮬레이션 s, 기본 900]. 로봇은 wait_1부터, 평상시 손님, Fleet 서버 + 식당 설정(aging 1.667)
 label=$1; seed=$2; n=${3:-2}; robots=$(seq -f 'amr_%02g' 1 $n | paste -sd' ')
 D=/tmp/r2; mkdir -p $D/logs
 source /ros2_ws/install/setup.bash
@@ -21,10 +21,10 @@ setsid ros2 launch amr_gazebo dynamic_obstacles.launch.py config:=$G/dynamic_obs
   use_sim_time:=true > $D/logs/$label.obst.log 2>&1 &
 P3=$!
 mkdir -p $D/bags; rm -rf $D/bags/$label
-setsid ros2 bag record -o $D/bags/$label -e   '/amr_0[12]/(cmd_vel|plan|ground_truth/odom|local_costmap/costmap)|/dynamic_obstacles/.*/ground_truth/odom|/fleet/(congestion|task_assignments|task_status|robot_states)'   > $D/logs/$label.bag.log 2>&1 &
+setsid ros2 bag record -o $D/bags/$label -e   '/amr_0[12]/(cmd_vel|plan|ground_truth/odom|local_costmap/costmap|amcl_pose|scan)|/dynamic_obstacles/.*/ground_truth/odom|/fleet/(congestion|task_assignments|task_status|robot_states)'   > $D/logs/$label.bag.log 2>&1 &
 PB=$!
 (sleep 60; ros2 param get /fleet_manager assignment.aging_rate > $D/logs/$label.aging_rate.txt 2>&1) &
-timeout 3600 python3 $D/scene2.py --stations $F/stations_restaurant.yaml --out $D/$label.json --robots $robots --timeout 900 \
+timeout 3600 python3 $D/scene2.py --stations $F/stations_restaurant.yaml --out $D/$label.json --robots $robots --timeout ${4:-900} \
   > $D/logs/$label.scene.log 2>&1
 echo "$label exit=$? $(head -1 $D/logs/$label.scene.log | cut -c1-300)"
 kill -INT -- -$PB 2>/dev/null; sleep 3
