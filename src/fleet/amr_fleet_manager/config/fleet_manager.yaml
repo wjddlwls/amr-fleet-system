@@ -27,6 +27,10 @@ fleet_manager:
       congestion_weight: 3.0
       # 혼잡도를 이 시간 동안 못 받으면 euclidean으로 돌아간다 (실제 시간, s). 혼잡도 노드는 2 Hz
       congestion_timeout_s: 3.0
+      # 우선순위 aging (인터럽트 관제): 큐에서 기다린 1초마다 우선순위에 이만큼 더해 줄 세운다.
+      # 유효 우선순위 = priority + aging_rate × (지금 − Task.created_time), 노드 시계(시뮬레이션에서는 시뮬레이션 시간).
+      # 0이면 끈다 (기본, 지금 동작과 같음). 식당 시연 값은 fleet_manager_restaurant.yaml (amr_fleet_core README '우선순위 aging')
+      aging_rate: 0.0
     # 이 시간 동안 RobotState가 안 오면 할당 후보에서 뺀다 (실제 시간, s)
     robot_timeout_s: 3.0
     resend:

@@ -11,6 +11,15 @@ Point = Tuple[float, float]
 TYPE_DELIVERY = 0
 TYPE_CHARGE = 1
 TYPE_RETURN = 2
+TYPE_COLLECT = 3
+
+# 픽업 → 목적지 흐름인 작업 종류 (나머지는 목적지만 간다)
+PICKUP_TYPES = (TYPE_DELIVERY, TYPE_COLLECT)
+
+
+def has_pickup(task_type: int) -> bool:
+    """픽업 단계가 있는 작업 종류인지 (DELIVERY·COLLECT)."""
+    return task_type in PICKUP_TYPES
 
 # amr_msgs/msg/RobotState.MODE_* 와 같은 값
 MODE_IDLE = 0
@@ -29,7 +38,7 @@ class TaskInfo:
     dropoff_xy: Point
     priority: int
     created: float
-    # CHARGE·RETURN은 픽업이 없다
+    # CHARGE·RETURN은 픽업이 없다 (has_pickup)
     pickup_xy: Optional[Point] = None
     # 마감 없음이면 None
     deadline: Optional[float] = None
@@ -50,6 +59,29 @@ class RobotInfo:
     mode: int
     # 부하균형용 누적 할당 수. RobotState에 없는 값이라 서버가 센다
     load: int = 0
+
+
+@dataclass(frozen=True)
+class Aging:
+    """대기 시간만큼 우선순위를 올린다 (sort_by_priority, 인터럽트 관제).
+
+    유효 우선순위 = priority + rate × max(0, now − created). now는 TaskInfo.created와 같은 시계다(시뮬레이션에서는
+    시뮬레이션 시간, Task.created_time). 우선순위 차이 Δ는 Δ / rate 초를 더 기다리면 따라잡는다 - 급한 작업이 먼저
+    나가되 일반 작업이 끝없이 밀리지 않게 한다. 값 근거는 amr_fleet_core README '우선순위 aging'.
+    """
+
+    # 대기 1초당 더하는 우선순위 (0 이상). 0이면 aging 없이 지금 순서와 같다
+    rate: float
+    # 지금 시각 (s)
+    now: float
+
+    def __post_init__(self):
+        if not self.rate >= 0:
+            raise ValueError(f'aging rate는 0 이상이어야 한다: {self.rate}')
+
+    def effective(self, task: 'TaskInfo') -> float:
+        """작업의 유효 우선순위. created가 now보다 뒤면(시계 차이) 대기 0으로 본다."""
+        return task.priority + self.rate * max(0.0, self.now - task.created)
 
 
 @dataclass
