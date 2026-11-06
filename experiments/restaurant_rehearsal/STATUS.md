@@ -250,3 +250,44 @@ upstream/dev f03d953(#302·#307·#321 머지 뒤) 위로 옮겼다. 컨테이너
 
 ### inflation을 빼는 이유 (PR 본문용 한 줄)
 - 식당 프로필 inflation 0.75·cost_scaling 2.0은 폭 1.46 m 돌아가는 통로 가운데 비용을 0 → 약 100으로 올려 keepout 마스크(최대 90)보다 비싸게 만든다. keepout 3회 모두 서쪽 통로로 들어가 정체됐다(before는 keepout이면 늘 돌아갔다). none은 3회 중 2회 도착(before 1회)으로 나아졌지만 시연 1-2의 핵심을 깨므로 넣지 않는다
+
+## 11/7: feat/sim-restaurant-gt-localization PR 준비 (Gazebo 안 띄움)
+
+upstream/dev f44b125(#324 머지 뒤) 위로 리베이스하고 push했다(force-with-lease, 4e6e879 → 5713dc8). PR은 올리지 않았다.
+
+| 커밋 | 내용 |
+| --- | --- |
+| b017afa | (메인 창 4e6e879 리베이스) localization 인자 amcl / ground_truth / off, ground_truth_localization 노드·launch |
+| a2a76d4 | 문서·주석의 내부 표현("pp 창에서 따로 진행")을 측정한 원인(바퀴 헛돎)으로 바꿈 |
+| 5713dc8 | 예전 값 `localization:=true/false`를 계속 받는다 (true → amcl, false → off, 대소문자 무관) |
+
+- 컨테이너 clean build 경고 0. amr_bringup 87개, amr_localization 164개 통과(새 시험 18건 포함).
+- 첫 커밋 메시지에 "(pp window)"가 남아 있다. 고치려면 PR을 squash 머지하면서 본문을 바꾸면 된다.
+
+### 열린 PR이 localization 인자를 쓰는지 (#310 #312 #313 #316 #318 #319 #320 #322 #323)
+- 각 PR이 바꾼 줄에는 `localization:=true/false`나 localization 인자를 쓰는 곳이 없다. 하네스 시나리오(#310 fleet_restaurant_congestion, #316 demo_smoke, #318 fleet_battery, #319 demo_*, #323 restaurant_wide)도 system.launch에 localization을 안 넘겨 기본값(amcl)으로 돈다.
+- 그 브랜치들의 dev 쪽 코드(`experiments/cte_baseline/run_localized.sh`의 `localization:=true`)는 이 PR이 amcl로 고쳤고, 고치지 않았어도 이제 true를 amcl로 받는다.
+- **충돌: #319**가 같은 `stack.py`(Options 필드, validate, publish_odom_tf 옆 enable_camera 줄)와 `system.launch.py`(Options(...) 호출, 인자 목록)를 고친다. `git merge-tree`로 두 파일에서 내용 충돌을 확인했다. 둘째로 머지되는 쪽이 풀어야 한다. 풀 때 `localization=arg('localization')`, `opt.localization != 'off'`, `publish_odom_tf='true' if opt.localization == 'off' else 'false'`를 #319의 `enable_camera=arg(...)`, `opt.validate([r.name ...])`, `opt.has_camera(name)`과 합치면 된다.
+
+### #319 demo 시나리오에 localization:=ground_truth를 줄 수 있나: 지금은 못 준다
+- `demo_restaurant.yaml`의 stack 명령에 `localization:=…` 자리가 없다. params에 넣어도 명령으로 안 간다(runner.render는 명령 안의 `{이름}`만 채운다).
+- Actions(fleet-test.yml)는 params 이름이 **장면 파일 자체**(`demo_s12.yaml`)의 params 절에 없으면 실패시킨다(`has_param`, extends는 안 따라간다).
+- 넘기는 법 (코드는 안 고침, #319 쪽 수정):
+  1. `demo_restaurant.yaml` params에 `localization: amcl`, stack 명령에 `localization:={localization}`
+  2. `demo_s12.yaml`(필요하면 demo_s11) params에도 `localization: amcl` (Actions 이름 확인용)
+  3. 실행: `scenario=demo_s12, label=on, params="congestion_filter=keepout localization=ground_truth slot=b1"` (끔도 같은 localization으로 맞춘다)
+- 이 PR이 dev에 먼저 들어가야 한다. dev의 예전 launch는 `ground_truth`를 불리언으로 읽어 false(위치추정 끔)가 되고, `nav2:=true`와 같이 주면 시작하자마자 오류다.
+
+### PR 본문 메모: feat/sim-restaurant-gt-localization
+
+변경
+- `system.launch.py` `localization`: true/false → `amcl`(기본, AMCL+EKF, 동작 그대로) / `ground_truth`(새) / `off`(DiffDrive odom TF). 예전 값 true·false는 amcl·off로 계속 받는다(머지 안 된 브랜치·하네스 시나리오용)
+- `amr_localization` `ground_truth_localization` 노드·launch: Gazebo `ground_truth/odom`(world)을 AMCL+EKF와 같은 토픽(odometry/local, odometry/filtered, amcl_pose)과 TF(map → odom identity, odom → base_footprint)로 낸다. Nav2·구역 클라이언트는 바뀐 걸 모른다
+- 녹화 전용: 물류센터 KPI에 쓰지 않고, 이 옵션으로 찍은 영상은 정답 위치를 썼다고 밝힌다(두 README)
+- 테스트: test_stack(모드·예전 값·검증), test_system_launch(choices·world → map TF), ground_truth 변환 단위 시험, 가짜 ground_truth/odom으로 launch 시험
+
+리허설 근거 (1-2, 피크 손님, 서빙 로봇 1대, GT 기준)
+- 거짓 도착: y_keepout_s1 SUCCEEDED인데 GT는 목표에서 1.9 m(위치 오차 1.77 m), speed_s1 SUCCEEDED인데 2.3 m 남쪽
+- 위치 오차가 커지는 순간(C_keepout_s3 t=192~237 s): GT는 0.02 m도 안 움직이는데 바퀴 오도메트리는 0.18~0.39 m/s. GT 자세 스캔 일치 점수는 그대로(0.55~0.57)인데 AMCL 오차 0.18 → 2.07 m, 공분산은 0.12~0.17 m로 작은 채. 손님에 끼어 바퀴가 헛돌면 파티클이 통째로 밀리고 recovery_alpha 0이라 다시 퍼지지 않는다
+- 지도 분리(위치추정은 다리만, 경로는 상판까지)로는 안 나아졌다: 6회 모두 두 지도의 스캔 일치가 같았다
+- 그래서 근본 수정(헛돎 감지, recovery) 전에 녹화만 정답 위치로 찍는다. ground_truth 모드의 Gazebo 측정은 아직 없다(클라우드에서 확인 필요)
