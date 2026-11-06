@@ -90,6 +90,12 @@ def test_body_picks_spawn_body_and_nav2_profile():
         == ('serving', 'restaurant')
 
 
+def test_static_map_topic_goes_to_nav2():
+    assert args(stack(nav2=True), 'nav2.launch.py')['static_map_topic'] == ''
+    items = stack(nav2=True, static_map_topic='/map_planning')
+    assert args(items, 'nav2.launch.py')['static_map_topic'] == '/map_planning'
+
+
 def test_map_server_only_on_first_robot():
     assert args(stack(index=0), 'localization.launch.py')['start_map_server'] == 'true'
     assert args(stack(index=1), 'localization.launch.py')['start_map_server'] == 'false'

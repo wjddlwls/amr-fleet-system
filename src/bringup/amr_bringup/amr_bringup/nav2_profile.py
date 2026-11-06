@@ -89,6 +89,7 @@ def congestion_filter_overrides(filter_choice: str, speed_limit_topic: str = '')
 
 def build_overrides(
     nav2_params: dict, profile: str, filter_choice: str, odom_topic: str, speed_limit_topic: str = '',
+    static_map_topic: str = '',
 ) -> dict:
     """로봇 하나의 controller_server(FollowPath=DWA)·global_costmap·local_costmap에 덧붙일 오버레이 전체.
 
@@ -103,6 +104,10 @@ def build_overrides(
     global_over = dict(profile_over.get('global_costmap', {}))
     global_over.update(congestion_filter_overrides(filter_choice, speed_limit_topic))
     local_over = dict(profile_over.get('local_costmap', {}))
+    if static_map_topic:
+        # 경로 계획용 지도를 위치추정 지도(/map)와 나눌 때 (식당: 상판까지 칠한 지도는 costmap만 읽는다)
+        for over in (global_over, local_over):
+            over['static_layer'] = {'map_topic': static_map_topic}
 
     return {
         'controller_server': {'ros__parameters': {

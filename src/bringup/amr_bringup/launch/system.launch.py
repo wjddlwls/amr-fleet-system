@@ -50,6 +50,10 @@ from amr_bringup.robots import load_robots, world_to_map, world_to_map_tf_args
 from amr_bringup.stack import Options, robot_stack
 
 
+# planning_map을 주면 경로 계획용 지도를 이 토픽으로 낸다
+PLANNING_MAP_TOPIC = '/map_planning'
+
+
 def _launch(package, name, **arguments):
     """다른 패키지 launch를 include한다. 넘긴 인자가 뒤의 include로 새지 않게 GroupAction으로 가둔다."""
     return GroupAction([IncludeLaunchDescription(
@@ -76,7 +80,8 @@ def _system(context):
         zone_client=flag('zone_client'), tracking=flag('tracking'), safety=flag('safety'),
         detection=flag('detection'), docking=flag('docking'), enable_camera=flag('enable_camera'),
         payload_mass=arg('payload_mass'), seed=seed, map=arg('map'), use_imu=arg('use_imu'),
-        zones_file=arg('zones_file'), body=arg('body'))
+        zones_file=arg('zones_file'), body=arg('body'),
+        static_map_topic=PLANNING_MAP_TOPIC if arg('planning_map') else '')
     opt.validate()
 
     actions = [_launch('amr_gazebo', 'world.launch.py', gui=arg('gui'), world=arg('world'))]
@@ -86,6 +91,17 @@ def _system(context):
         actions.append(Node(
             package='tf2_ros', executable='static_transform_publisher', name='world_to_map',
             arguments=world_to_map_tf_args(origin), parameters=[{'use_sim_time': True}], output='screen'))
+    if opt.localization and arg('planning_map'):
+        # 경로 계획용 지도를 따로 띄운다 (costmap static_layer만 읽는다). /map은 위치추정(AMCL)용
+        actions += [
+            Node(package='nav2_map_server', executable='map_server', name='map_server_planning',
+                 parameters=[{'yaml_filename': arg('planning_map'), 'use_sim_time': True}],
+                 remappings=[('map', PLANNING_MAP_TOPIC)], output='screen'),
+            Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
+                 name='lifecycle_manager_map_planning',
+                 parameters=[{'use_sim_time': True, 'autostart': True, 'node_names': ['map_server_planning']}],
+                 output='screen'),
+        ]
     if flag('dynamic_obstacles'):
         # 상대 이름이면 amr_gazebo config/ 아래 파일 (식당: dynamic_obstacles_restaurant_peak.yaml 등)
         obstacles = arg('dynamic_obstacles_file')
@@ -154,6 +170,9 @@ def generate_launch_description():
         # 위치추정
         ('localization', 'true', 'AMCL + EKF. 끄면 DiffDrive odom TF를 쓴다'),
         ('map', default_map, '지도 yaml'),
+        ('planning_map', '',
+         'Nav2 경로 계획용 지도 yaml (costmap static_layer). 비우면 map 하나를 위치추정·경로 계획이 같이 쓴다. '
+         '식당: map은 restaurant_scan(LiDAR 높이, AMCL), planning_map은 restaurant_gt(상판까지)'),
         ('map_origin_in_world', '[-0.0439, 1.4712, -0.00088]',
          'world에서 본 map 원점 [x, y, yaw] (지도 정렬값, amr_mapping README). AMCL 초기 위치 계산'),
         ('use_imu', 'true', 'EKF에 IMU를 넣을지'),
