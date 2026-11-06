@@ -185,3 +185,26 @@ docker exec $C bash -c 'source /ros2_ws/install/setup.bash; python3 /tmp/abort_c
 # 다시 시작: 컨테이너 띄우고 빌드·스크립트 복사는 위 "다시 시작하기"와 같다
 bash experiments/restaurant_rehearsal/scripts/runq.sh <컨테이너> <큐 파일>   # 실행마다 배터리 확인, 10 % 아래면 멈춤
 ```
+
+## 11/6 저녁: 지도 분리 + inflation 수정 측정 (1-2 피크, none·keepout 각 3회)
+
+브랜치 `rehearsal/restaurant-split-inflation` = `rehearsal/restaurant-demo`(지도 분리 merge) + `fix/nav-restaurant-inflation`. 빌드 경고 0, 관련 테스트 277개 통과(13 skip). `MAPS=split`, Gazebo headless, 카메라·RViz 끔. 결과 원본 `raw/run_1106c/scene1_2`.
+`feat/bringup-congestion-filter`(bf9a475): #304가 nav2.launch에 넣은 `congestion_filter`를 system.launch에서 로봇마다 넘겨 주는 인자만 더한 브랜치(필터 자체는 #304).
+
+| 실행 | before (지도 1장, inflation 0.55) 보고 / GT 도착 오차 / 위치 오차 | after (지도 분리 + inflation 0.75·2.0) 보고 / GT 도착 오차 / 위치 오차 (AMCL 평균·최대) | after 주 정체 원인 |
+| --- | --- | --- | --- |
+| none_s1 | SUCCEEDED / 0.15 / 0.14 | SUCCEEDED / 0.07 / 0.11 (0.14·0.23) | 없음 (40 s) |
+| none_s2 | SUCCEEDED(허용 밖) / 0.64 / 0.46 | SUCCEEDED / 0.13 / 0.16 (0.15·0.27) | 없음 (52 s) |
+| none_s3 | CANCELED / 1.56 / 0.38 | CANCELED / 2.39 / 0.17 (0.21·0.34) | 서쪽 통로 손님 사이 no_progress 12회 |
+| keepout_s1 | SUCCEEDED(가짜) / 1.9 / 1.77 | CANCELED / 4.82 / 0.16 (0.15·0.24) | 서쪽 통로 의자 옆(여유 0.42) 156 s, DWA 궤적 없음 139회 |
+| keepout_s2 | ABORTED / 5.9 / 0.27 | CANCELED / 3.78 / 0.13 (0.13·0.24) | 서쪽 통로 의자 옆(여유 0.30) 30 s, no_progress 10회 |
+| keepout_s3 | CANCELED / - / - | CANCELED / 2.56 / **2.27** (1.28·2.36) | 서 있는 손님 peak_1(0.36 m)에 끼어 바퀴 헛돎 → 위치 추정 어긋남 |
+
+(GT 도착 오차·위치 오차는 m, 위치 오차 = 끝에서 TF 추정과 GT 차이. before는 amcl_pose를 녹화하지 않아 끝값만 있다.)
+
+### 판단
+- **지도 분리 가설은 틀렸다.** 6회 모두 GT 자세에서 스캔을 두 지도에 맞춰 보면 restaurant_gt가 오히려 약간 높고(점수 0.56~0.69 vs 0.54~0.66), 평탄도(0.006~0.015)와 최고점 위치(0.1 m)가 같다. 상판 상자가 AMCL을 흐리게 하지 않는다. `fix/nav-restaurant-scan-map`은 PR 대상에서 뺀다.
+- **위치 오차의 실제 원인은 바퀴 헛돎이다.** keepout_s3 t=192~237 s: GT는 (-10.11, 1.43)에서 0.02 m도 안 움직이는데 바퀴 오도메트리는 0.18~0.39 m/s로 돈다. 그동안 GT 자세 스캔 점수는 그대로(0.55~0.57, 최고점 0.14 m)인데 AMCL 오차는 0.18 → 2.07 m로 커지고 공분산은 0.12~0.17 m로 작은 채다. 파티클이 오도메트리를 따라 통째로 밀려 정답 근처 파티클이 없어지고, `recovery_alpha_slow/fast: 0.0`이라 다시 퍼지지도 않는다. y_keepout_s1(1.77 m)도 같은 꼴(몸 걸린 채 바퀴 돎)이었다.
+  - 후보(안 해 봄): 식당만 recovery_alpha 켜기(예 0.001/0.1), 손님에 끼었을 때 바퀴를 멈추게(안전 노드·DWA 근접 정지), EKF가 IMU 각속도·가속도로 헛돎을 거르게.
+- **inflation 수정은 PR 대상에서 뺀다.** none은 3회 중 2회 허용 안 도착(before 1회)으로 나아졌지만, keepout 3회가 모두 돌아가는 길(x -7.275 통로)을 버리고 서쪽 통로로 갔다(계획 302/302, 443/443, 163/356이 서쪽 통로 통과, before는 keepout이면 늘 돌아갔다). 폭 1.46 m 돌아가는 통로 가운데(벽에서 0.73 m)의 비용이 inflation 0.55·3.0에서는 0인데 0.75·2.0에서는 약 100이 되어 keepout 마스크(최대 90)보다 비싸졌다. 시연 1-2의 핵심(붐비는 통로 돌아가기)을 깨므로 넣지 않는다. 의자 옆 정체(여유 0.30~0.42 m)도 그대로 남았다.
+- 이 조건으로 1-2를 녹화하면 none은 되지만 keepout(돌아가기)은 안 된다.
